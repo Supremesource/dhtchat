@@ -3,7 +3,7 @@ from curses import wrapper
 from curses.textpad import Textbox, rectangle
 
 
-NICKNAME = "@fam"
+NICKNAME = "@model::test"
 KEY = "abcdefghijklmnopqrstuvwxyz1234567890!@#$%^&*()_+"
 
 def check_terminal_size(stdscr, min_height, min_width):
@@ -20,7 +20,6 @@ def check_terminal_size(stdscr, min_height, min_width):
 
 def main(stdscr):
     # append old messages here 
-    msg_list = [""]
     # scroll_pos = 0
     min_height, min_width = 20, 80  
     if not check_terminal_size(stdscr, min_height, min_width):
@@ -43,33 +42,38 @@ def main(stdscr):
     curses.init_pair(6, curses.COLOR_BLUE, -1)
     CYAN_DEFAULT = curses.color_pair(1)
     WHITE_RED = curses.color_pair(5)
+    WHITE_GREEN = curses.color_pair(4)
+    WHITE_BLUE = curses.color_pair(6)
+    WHITE_MAGENTA = curses.color_pair(2)
 
     # Actual UI starts from here
     side_win = curses.newwin(y - 2, 18, 1, 2)
     rectangle(stdscr, 0, 0, y - 1, 20)
-    stdscr.addstr(0, 2, f" {NICKNAME} ", CYAN_DEFAULT)
-    side_win.addstr(1, 2, "\n<   CONNECTED   >\n", WHITE_RED)
-    side_win.addstr(f"\n{KEY[:15]}..")
-    side_win.addstr(5,2, "\n<      EXIT      >\n", WHITE_RED)
+    stdscr.addstr(0, 2, f" {NICKNAME} ", WHITE_MAGENTA)
+    side_win.addstr(0, 2, "\n<    CONNECTED   >\n", WHITE_RED)
+    side_win.addstr(f"as {KEY[:10]}..")
+    side_win.addstr(4, 2, "\n<      ROOM      >\n", WHITE_RED)
+    side_win.addstr("ROOM1")
+    side_win.addstr(8,2, "\n<      EXIT      >\n", WHITE_RED)
     side_win.addstr("--E")
-    side_win.addstr(9, 2, "\n<     ROOM     >\n", WHITE_RED)
-    side_win.addstr("\nROOM1")
-    side_win.addstr(13, 2, "\n<   SCROLL   >\n", WHITE_RED)
-    side_win.addstr("\n --U \n --D ")
-    side_win.addstr(30,2, "\n<  INPUT-TEXT  > \n", WHITE_RED)
+    side_win.addstr(12, 2, "\n<     SCROLL     >\n", WHITE_RED)
+    side_win.addstr("--U:(num) \n--D:(num) ")
+    side_win.addstr(17, 2, "\n<      HELP      >\n", WHITE_RED)
+    side_win.addstr("visit: \nwww.communeai.info")
     
     # 
     container_win = curses.newwin(y - 5, x - 25, 2, 23)
     
     rectangle(stdscr, 0, 21, y - 1, x - 2)
-    stdscr.addstr(0, 23, f" COMMUNE-chat - Terminal UI ", CYAN_DEFAULT)
+    stdscr.addstr(0, 23, f" COMMUNE.CHAT-UI ", WHITE_BLUE)
 
     
     text_win = curses.newwin(1, x - 26, y - 2, 23)
     box = Textbox(text_win, insert_mode=True)
     rectangle(stdscr, y - 3, 22, y - 1, x - 3)
+    stdscr.addstr(y - 3, 23, "Input your text: ", WHITE_BLUE)
 
-
+    msg_list = [""]
     scroll_index = 0 
     while True:
         text_win.clear()
@@ -78,43 +82,69 @@ def main(stdscr):
         side_win.refresh()
         box.edit(validate)
         raw = box.gather()
-        text = f"{NICKNAME}: {raw}"
-        cmdchk = text.split()
+        if raw == "":
+            continue
+        cmdchk = raw[:6].strip()
         
+
+        save_command = True
 
         if "--E" in cmdchk:
             exit("exited from chat")
         
         # scroll up
         if "--U" in cmdchk:
-            up_scroll = scroll_index + 1
+            jump = get_jump_value(cmdchk)
+            scroll_index = scroll_index + jump
+            if scroll_index > len(msg_list) - 1:
+                scroll_index = len(msg_list) - 2
+            save_command = False
 
         # scroll down
         if "--D" in cmdchk:
-            pass
+            jump = get_jump_value(cmdchk)
+            scroll_index = scroll_index - jump
+            if scroll_index < 0:
+                scroll_index = 0
+            save_command = False
 
         msg_row = 0
-        try:
-            if cmdchk[1] == '$':
-                pass
-            else:
-                msg_list.append(text)
-                container_win.clear()
-        except:
-            pass
+
+        if save_command:
+            scroll_index = 0
+            msg_list.append(raw)
         
+        container_win.clear()
+        container_win_height = y - 5  
+        num_messages_to_display = min(len(msg_list), container_win_height)
         start_index = max(0, len(msg_list) - num_messages_to_display - scroll_index)
         end_index = max(0, len(msg_list) - scroll_index)
         displayed_messages = msg_list[start_index:end_index]
-        
-        container_win_height = y - 5  
-        num_messages_to_display = min(len(msg_list), container_win_height)
-        for msg in msg_list[-num_messages_to_display:]:
-            if msg_row < container_win_height:  # Ensure we don't write beyond the window's bounds
-                container_win.addstr(msg_row, 0, msg)
-                msg_row += 1 
-                
+        NICKNAME_COLOR_PAIR = 2
+        for msg in displayed_messages[1:]:
+            if msg_row < container_win_height:
+                # Add the nickname in color at the beginning of each line
+                container_win.addstr(msg_row, 0, NICKNAME + ": ", curses.color_pair(NICKNAME_COLOR_PAIR))
+
+                # Calculate the length of the nickname with the colon and space
+                nickname_length = len(NICKNAME) + 2
+
+                # Add the message right after the nickname
+                container_win.addstr(msg_row, nickname_length, msg)
+                msg_row += 1
+                    
     stdscr.getch()
+
+def get_jump_value(raw: str) -> int:
+    parts = raw.split(":")
+    if len(parts) == 2 and parts[1].isdigit():
+        return int(parts[1])
+    elif len(parts) > 2 and ''.join(parts[1:]).isdigit():
+        # Concatenate all parts after the first colon and convert to int
+        return int(''.join(parts[1:]))
+    else:
+        return 2
+
 
 def validate(ch):
     if ch == curses.KEY_BACKSPACE or ch == 127:
